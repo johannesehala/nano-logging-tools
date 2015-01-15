@@ -41,6 +41,7 @@ def writelog(msg):
 		g_logfiles[hostname_n] = open(logfilename, "ab+")
 
 	g_logfiles[hostname_n].write(rest + "\n")
+	g_logfiles[hostname_n].flush()
 
 
 def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
@@ -109,7 +110,8 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 					raise
 
 			if msg:
-				sys.stdout.write("+")
+				hostname_n, rest = msg.split(None, 1)
+				sys.stdout.write(hostname_n[-1])
 				sys.stdout.flush()
 				if soc_pub:
 					soc_pub.send(msg)
