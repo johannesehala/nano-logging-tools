@@ -25,65 +25,61 @@ g_mote_koerkana_table = {
 def transform_for_sensed(msg):
 
 	# take apart lines like this
-	# 95391 2015-01-16 09:57:02.82 'D| CTPRE: 358|N-etx 00 E4D8 NO NO'
+	# koerkana1_4 87113 2015-01-16 13:25:05.25 'N-cbuf 2B45 01 0C'
 
 	try:
-		hostname_n, timestr1, timestr2, rest = msg.split(None, 3)
+		hostname_n, seqno, timestr1, timestr2, rest = msg.split(None, 4)
 		# remove quotes
 		rest = rest[1:-1]
-		packet = rest.split("|")
 
+		timestamp = 0 # TODO: calc from timestr1/2
+		#node = g_mote_koerkana_table.get(hostname_n, 0xFFFE)
 
-		timestamp = 0
-		node = g_mote_koerkana_table.get(hostname_n, 0xFFFE)
+		nugget = rest
+		if nugget.startswith("N-"):
+			# yay. we have a sensed line!
+			p = nugget.split()
+			if p[0] == "N-etx":
+				# 95391 2015-01-16 09:57:02.82 'D| CTPRE: 358|N-etx 00 E4D8 NO NO'
+				# nanodbg("data etx", "index %u neighbor %u etx NO_ROUTE retx NO_ROUTE", i, entry->neighbor);
+				# debug4("N-etx %02X %02X NO NO", i, entry->neighbor); // sensed
+				header, node, index, neighbor, etx, retx = p
+				return "data etx %i node %04X index %u neighbor %u etx NO_ROUTE retx NO_ROUTE" % \
+					(timestamp, int(node,16), int(index,16), int(neighbor,16))
+			elif p[0] == "N-retx":
+				# nanodbg("data etx", "index %u neighbor %u etx %u retx %u", i, entry->neighbor, linkEtx, entry->info.etx);
+				# debug4("N-retx %02X %02X %02X %02X", i, entry->neighbor, linkEtx, entry->info.etx); // sensed
+				header, node, index, neighbor, etx, retx = p
+				return "data etx %i node %04X index %u neighbor %u etx %u retx %u" % \
+					(timestamp, int(node,16), int(index,16), int(neighbor,16), int(etx,16), int(retx,16))
+			elif p[0] == "N-sctp":
+				header, node, dest, origin, origin_seqno, amid, thl = p
+				# nanodbg("event send_ctp_packet", "dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl);
+				# debug4("N-sctp %04X %04X %02X %02X %02X", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl); // sensed
+				return "event send_ctp_packet %i node %04X dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u" % \
+					(timestamp, int(node,16), int(dest,16), int(origin,16), int(origin_seqno,16), int(amid,16), int(thl,16))
+			elif p[0] == "N-cbuf":
+				# nanodbg("data ctpf_buf_size", "used %u capacity %u", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
+				# debug4("N-cbuf %02X %02X", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
+				header, node, used, capacity = p
+				return "data ctpf_buf_size %i node %04X used %u capacity %u" % \
+					(timestamp, int(node,16), int(used,16), int(capacity,16))
 
+			elif p[0] == "N-bcn":
+				# nanodbg("event beacon", "options 0x%02X parent 0x%04X etx %u", beaconMsg->options, beaconMsg->parent, beaconMsg->etx);
+				# debug4("N-bcn %02X %04X %02X", beaconMsg->options, beaconMsg->parent, beaconMsg->etx); // sensed
+				header, node, options, parent, etx = p
+				return "event beacon %i node %04X options 0x%02X parent 0x%04X etx %u" % \
+					(timestamp, int(node,16), int(options,16), int(parent,16), int(etx,16))
 
-		if len(packet) == 3:
-			nugget = packet[2]
-			if nugget.startswith("N-"):
-				# yay. we have a sensed line!
-				p = nugget.split()
-				if p[0] == "N-etx":
-					# 95391 2015-01-16 09:57:02.82 'D| CTPRE: 358|N-etx 00 E4D8 NO NO'
-					# nanodbg("data etx", "index %u neighbor %u etx NO_ROUTE retx NO_ROUTE", i, entry->neighbor);
-					# debug4("N-etx %02X %02X NO NO", i, entry->neighbor); // sensed
-					header, index, neighbor, etx, retx = p
-					return "data etx %i node %04X index %u neighbor %u etx NO_ROUTE retx NO_ROUTE" % \
-						(timestamp, node, int(index,16), int(neighbor,16))
-				elif p[0] == "N-retx":
-					# nanodbg("data etx", "index %u neighbor %u etx %u retx %u", i, entry->neighbor, linkEtx, entry->info.etx);
-					# debug4("N-retx %02X %02X %02X %02X", i, entry->neighbor, linkEtx, entry->info.etx); // sensed
-					header, index, neighbor, etx, retx = p
-					return "data etx %i node %04X index %u neighbor %u etx %u retx %u" % \
-						(timestamp, node, int(index,16), int(neighbor,16), int(etx,16), int(retx,16))
-				elif p[0] == "N-sctp":
-					header, dest, origin, origin_seqno, amid, thl = p
-					# nanodbg("event send_ctp_packet", "dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl);
-					# debug4("N-sctp %04X %04X %02X %02X %02X", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl); // sensed
-					return "event send_ctp_packet %i node %04X dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u" % \
-						(timestamp, node, int(dest,16), int(origin,16), int(origin_seqno,16), int(amid,16), int(thl,16))
-				elif p[0] == "N-cbuf":
-					# nanodbg("data ctpf_buf_size", "used %u capacity %u", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
-					# debug4("N-cbuf %02X %02X", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
-					header, used, capacity = p
-					return "data ctpf_buf_size %i node %04X used %u capacity %u" % \
-						(timestamp, node, int(used,16), int(capacity,16))
-
-				elif p[0] == "N-bcn":
-					# nanodbg("event beacon", "options 0x%02X parent 0x%04X etx %u", beaconMsg->options, beaconMsg->parent, beaconMsg->etx);
-					# debug4("N-bcn %02X %04X %02X", beaconMsg->options, beaconMsg->parent, beaconMsg->etx); // sensed
-					header, options, parent, etx = p
-					return "event beacon %i node %04X options 0x%02X parent 0x%04X etx %u" % \
-						(timestamp, node, int(options,16), int(parent,16), int(etx,16))
-
-				elif p[0] == "N-s":
-					# nanodbg("event packet_to_activemessage", "dest 0x%04X amid 0x%02X", addr, id);
-					# debug4("N-s %04X %02X", addr, id); // sensed
-					header, dest_addr, amid = p
-					return "event packet_to_activemessage %i node %04X dest 0x%04X amid 0x%02X" % \
-						(timestamp, node, int(dest_addr,16), int(amid,16))
-				else:
-					log.error("unknown sensed packet: %s", msg)
+			elif p[0] == "N-s":
+				# nanodbg("event packet_to_activemessage", "dest 0x%04X amid 0x%02X", addr, id);
+				# debug4("N-s %04X %02X", addr, id); // sensed
+				header, node, dest_addr, amid = p
+				return "event packet_to_activemessage %i node %04X dest 0x%04X amid 0x%02X" % \
+					(timestamp, int(node,16), int(dest_addr,16), int(amid,16))
+			else:
+				log.error("unknown sensed packet: %s", msg)
 	except:
 		log.exception("error parsing msg: %s", msg)
 
