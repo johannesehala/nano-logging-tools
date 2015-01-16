@@ -123,8 +123,9 @@ def run(addr_forward, addr_subscribe):
 				#hostname_n, rest = msg.split(None, 1)
 				print msg
 
-				msg = transform_for_sensed(msg)
-				soc_pub.send(msg)
+				msg2 = transform_for_sensed(msg)
+				if msg2:
+					soc_pub.send(msg2)
 
 		time.sleep(0.01)
 
