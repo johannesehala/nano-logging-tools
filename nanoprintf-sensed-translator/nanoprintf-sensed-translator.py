@@ -16,12 +16,6 @@ from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
 from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
 
 
-g_mote_koerkana_table = {
-	"koerkana1_1": 0x1,
-	"koerkana1_2": 0x2,
-	}
-
-
 def transform_for_sensed(msg):
 
 	# take apart lines like this
@@ -33,7 +27,6 @@ def transform_for_sensed(msg):
 		rest = rest[1:-1]
 
 		timestamp = 0 # TODO: calc from timestr1/2
-		#node = g_mote_koerkana_table.get(hostname_n, 0xFFFE)
 
 		nugget = rest
 		if nugget.startswith("N-"):
@@ -114,6 +107,8 @@ def run(addr_forward, addr_subscribe):
 			except NanoMsgAPIError as e:
 				if e.errno != errno.EAGAIN:
 					raise
+				else:
+					time.sleep(0.01)
 
 			if msg:
 				#hostname_n, rest = msg.split(None, 1)
@@ -122,8 +117,6 @@ def run(addr_forward, addr_subscribe):
 				msg2 = transform_for_sensed(msg)
 				if msg2:
 					soc_pub.send(msg2)
-
-		time.sleep(0.01)
 
 
 if __name__ == "__main__":
