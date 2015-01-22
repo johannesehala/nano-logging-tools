@@ -27,9 +27,9 @@ g_logfiles = {}
 
 def writelog(msg):
 	"""
-	"hostname_portname 123 x2014-01-14 14:43:21.23 this is the original line"
+	"hostname_portname 123ABC x2014-01-14T14:43:21.23Z this is the original line"
 
-	123 - seqno
+	123ABC - seqno
 	the x means the line is corrupt (no newline from uart for too long)
 	"""
 	hostname_n, seqno, rest = msg.split(None, 2)

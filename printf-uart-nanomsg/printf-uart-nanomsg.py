@@ -7,8 +7,8 @@ send to a nanomsg REP socket.
 
 line format:
 
-	"koerkana1_1  2015-01-14 13:41:37.90 Hello world"
-	"koerkana1_4 x2015-01-14 13:41:37.90 Hello world"
+	"koerkana1_1  2015-01-14T13:41:37.90 Hello world"
+	"koerkana1_4 x2015-01-14T13:41:37.90 Hello world"
 
 The 'x' denotes a broken line (no newline for too long).
 
@@ -34,20 +34,20 @@ MAX_MSG_AGE = 60. * 30
 
 
 def log_timestr(t=None):
-	""" '2010-01-18 18:40:42.23' utc time """
+	""" '2010-01-18T18:40:42.23Z' utc time """
 	if t is None:
 		t = time.time()
 	#return datetime.datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S.%f")[:22]
-	return datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S.%f")[:22]
+	return datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
 
 
 def prepare_tx_line(portname, seqno, line, timestamp, broken=False):
 	"""
 	output:
-	    boken = False: "hostname_portname 123 2014-01-14 14:43:21.23 this is the original line"
-	    boken = True : "hostname_portname 123 x2014-01-14 14:43:21.23 this is the original line"
+	    boken = False: "hostname_portname 123ABC 2014-01-14T14:43:21.23Z this is the original line"
+	    boken = True : "hostname_portname 123ABC x2014-01-14T14:43:21.23Z this is the original line"
 	"""
-	return "%s_%s %s %s%s %s" % (os.uname()[1], portname, seqno, "x" if broken else "", log_timestr(timestamp), repr(line))
+	return "%s_%s %06X %s%s %s" % (os.uname()[1], portname, seqno, "x" if broken else "", log_timestr(timestamp), repr(line))
 
 
 class NewlineParser:
