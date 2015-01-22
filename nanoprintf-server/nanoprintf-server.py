@@ -80,7 +80,7 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 			jumbomsg = None
 			try:
 				jumbomsg = soc_rep.recv(flags=DONTWAIT)
-				#print "jumbomsg", jumbomsg
+				print "jumbomsg", len(jumbomsg)
 			except NanoMsgAPIError as e:
 				if e.errno != errno.EAGAIN:
 					raise
@@ -88,10 +88,12 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 			if jumbomsg:
 				# reply anything to the REQ socket or no more messages will arrive
 				soc_rep.send("got it")
-				# ONLY messages from the REQ socket can be jumbomessages (simple lines joind by newlines)
+				# ONLY messages from the REQ socket can be jumbomessages (simple lines joined by newlines)
 				msgs = jumbomsg.split("\n")
 				for msg in msgs:
-					sys.stdout.write(".")
+					hostname_n, rest = msg.split(None, 1)
+					s = "a" if hostname_n[-1] == "1" else "d"
+					sys.stdout.write(s)
 					sys.stdout.flush()
 					if soc_pub:
 						soc_pub.send(msg)
@@ -101,22 +103,25 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 		# read from addr_subscribe and forward to addr_forward
 
 		if soc_sub:
+			while 1:
 
-			msg = None
-			try:
-				msg = soc_sub.recv(flags=DONTWAIT)
-			except NanoMsgAPIError as e:
-				if e.errno != errno.EAGAIN:
-					raise
+				msg = None
+				try:
+					msg = soc_sub.recv(flags=DONTWAIT)
+				except NanoMsgAPIError as e:
+					if e.errno == errno.EAGAIN:
+						break
+					else:
+						raise
 
-			if msg:
-				hostname_n, rest = msg.split(None, 1)
-				sys.stdout.write(hostname_n[-1])
-				sys.stdout.flush()
-				if soc_pub:
-					soc_pub.send(msg)
-				if uselog:
-					writelog(msg)
+				if msg:
+					hostname_n, rest = msg.split(None, 1)
+					sys.stdout.write(hostname_n[-1])
+					sys.stdout.flush()
+					if soc_pub:
+						soc_pub.send(msg)
+					if uselog:
+						writelog(msg)
 
 		time.sleep(0.01)
 
