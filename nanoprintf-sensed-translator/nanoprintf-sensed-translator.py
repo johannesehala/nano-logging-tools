@@ -69,7 +69,7 @@ def transform_for_sensed(msg):
 				# nanodbg("data ctpf_buf_size", "used %u capacity %u", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
 				# debug4("N-cbuf %02X %02X", call MessagePool.maxSize() - call MessagePool.size(), call MessagePool.maxSize());
 				header, node, used, capacity = p
-				return "data ctpf_buf_size %.2f node_%s %04X used %u capacity %u" % \
+				return "data ctpf_buf_size %.2f node %04X_%s used %u capacity %u" % \
 					(timestamp, int(node,16), name, int(used,16), int(capacity,16))
 
 			elif p[0] == "N-bcn":
