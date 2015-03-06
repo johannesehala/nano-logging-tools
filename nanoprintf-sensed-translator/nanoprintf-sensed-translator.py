@@ -46,23 +46,26 @@ def transform_for_sensed(msg):
 		if nugget.startswith("N-"):
 			# yay. we have a sensed line!
 			p = nugget.split()
+
+			# TODO: update doc. there's a node field in every mote packet.
+
 			if p[0] == "N-etx":
 				# 95391 2015-01-16 09:57:02.82 'D| CTPRE: 358|N-etx 00 E4D8 NO NO'
 				# nanodbg("data etx", "index %u neighbor %u etx NO_ROUTE retx NO_ROUTE", i, entry->neighbor);
-				# debug4("N-etx %02X %02X NO NO", i, entry->neighbor); // sensed
+				# debug4("N-etx %02X %02X NO NO", i, entry->neighbor); // as inside mote
 				header, node, index, neighbor, etx, retx = p
 				return "data etx %.2f node %04X_%s index %u neighbor %u etx NO_ROUTE retx NO_ROUTE" % \
 					(timestamp, int(node,16), name, int(index,16), int(neighbor,16))
 			elif p[0] == "N-retx":
 				# nanodbg("data etx", "index %u neighbor %u etx %u retx %u", i, entry->neighbor, linkEtx, entry->info.etx);
-				# debug4("N-retx %02X %02X %02X %02X", i, entry->neighbor, linkEtx, entry->info.etx); // sensed
+				# debug4("N-retx %02X %02X %02X %02X", i, entry->neighbor, linkEtx, entry->info.etx); // as inside mote
 				header, node, index, neighbor, etx, retx = p
 				return "data etx %.2f node %04X_%s index %u neighbor %u etx %u retx %u" % \
 					(timestamp, int(node,16), name, int(index,16), int(neighbor,16), int(etx,16), int(retx,16))
 			elif p[0] == "N-sctp":
 				header, node, dest, origin, origin_seqno, amid, thl = p
 				# nanodbg("event send_ctp_packet", "dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl);
-				# debug4("N-sctp %04X %04X %02X %02X %02X", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl); // sensed
+				# debug4("N-sctp %04X %04X %02X %02X %02X", dest, hdr->origin, hdr->originSeqNo, hdr->type, hdr->thl); // as inside mote
 				return "event send_ctp_packet %.2f node %04X_%s dest 0x%04X origin 0x%04X sequence %u amid 0x%02X thl %u" % \
 					(timestamp, int(node,16), name, int(dest,16), int(origin,16), int(origin_seqno,16), int(amid,16), int(thl,16))
 			elif p[0] == "N-cbuf":
@@ -74,18 +77,28 @@ def transform_for_sensed(msg):
 
 			elif p[0] == "N-bcn":
 				# nanodbg("event beacon", "options 0x%02X parent 0x%04X etx %u", beaconMsg->options, beaconMsg->parent, beaconMsg->etx);
-				# debug4("N-bcn %02X %04X %02X", beaconMsg->options, beaconMsg->parent, beaconMsg->etx); // sensed
+				# debug4("N-bcn %02X %04X %02X", beaconMsg->options, beaconMsg->parent, beaconMsg->etx); // as inside mote
 				header, node, options, parent, etx = p
 				return "event beacon %.2f node %04X_%s options 0x%02X parent 0x%04X etx %u" % \
 					(timestamp, int(node,16), name, int(options,16), int(parent,16), int(etx,16))
 
 			elif p[0] == "N-s":
 				# nanodbg("event packet_to_activemessage", "dest 0x%04X amid 0x%02X", addr, id);
-				# debug4("N-s %04X %02X", addr, id); // sensed
+				# debug4("N-s %04X %02X", addr, id); // as inside mote
 				header, node, dest_addr, amid = p
 				return "event packet_to_activemessage %.2f node %04X_%s dest 0x%04X amid 0x%02X" % \
 					(timestamp, int(node,16), name, int(dest_addr,16), int(amid,16))
+
+			elif p[0] == "N-Rsd":
+				# nanodbg("event packet_send_info", "dest 0x%04X amid 0x%02X", addr, id);
+				# nanoevent("N-Rsd %04X %02X %04X %02X %02X %u %02X %02X %02X", TOS_NODE_ID, rm, call SubAMPacket.destination[rm](msg), id, error, retry_count, acked, congested, dropped); // as inside mote
+				# 2015-03-03T08:47:19.69Z 'N-Rsd 2B45 02 4208 71 00 1 01 00 00'
+				header, node, rm, dest_addr, amid, error, retry_count, acked, congested, dropped = p
+				return "event send_done %.2f node %04X_%s rm 0x%02X dest 0x%04X amid 0x%02X error 0x%02X retry_count 0x%02X acked 0x%02X congested 0x%02X dropped 0x%02X" % \
+					(timestamp, int(node,16), name, int(rm,16), int(dest_addr,16), int(amid,16), int(error,16), int(retry_count), int(acked,16), int(congested,16), int(dropped,16))
+
 			else:
+
 				log.error("unknown sensed packet: %s", msg)
 	except:
 		log.exception("error parsing msg: %s", msg)
