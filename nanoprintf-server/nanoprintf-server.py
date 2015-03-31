@@ -13,6 +13,7 @@ Logs all loglines to local logfiles. Separate file for every hostname/port.
 import logging
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.NOTSET, format="%(asctime)s %(name)s %(levelname)-5s: %(message)s")
+import logging.handlers
 
 import sys
 import time
@@ -21,11 +22,23 @@ import errno
 from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
 from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
 
-# dict of opened logfiles
-g_logfiles = {}
+# dict of opened loggers. one for every device/logfile
+g_loggers = {}
 
 
-def writelog(msg):
+def create_logger(filename):
+	""" create/return a logger that logs to a file with the given name. rotate the file every midnight, keep 14 days
+	l = create_logger("hello.log"); l.info("line1"); # creates a file "hello.log" with only "line1\n" for content. """
+	logformat = logging.Formatter("%(message)s")
+	logfile = logging.handlers.TimedRotatingFileHandler(filename, "midnight", utc=True, backupCount=14)
+	logfile.setFormatter(logformat)
+	newlogger = logging.getLogger(filename)
+	newlogger.addHandler(logfile)
+	newlogger.setLevel(logging.NOTSET)
+	return newlogger
+
+
+def write_to_log(msg):
 	"""
 	"hostname_portname 123ABC x2014-01-14T14:43:21.23Z this is the original line"
 
@@ -33,15 +46,16 @@ def writelog(msg):
 	the x means the line is corrupt (no newline from uart for too long)
 	"""
 	hostname_n, seqno, rest = msg.split(None, 2)
-	# create one log file for every hostname_n (unique for each host and serial port)
-	if hostname_n not in g_logfiles:
-		logfilename = "log_%s.txt" % hostname_n
+
+	# create one logger for every hostname_n (unique for each host and serial port)
+	# the logger will create one rotated log file for itself.
+	if hostname_n not in g_loggers:
+		logfilename = "log_%s.log" % hostname_n
+		g_loggers[hostname_n] = create_logger(logfilename)
 		sys.stdout.write("\n")
 		log.info("opening log file %s", logfilename)
-		g_logfiles[hostname_n] = open(logfilename, "ab+")
 
-	g_logfiles[hostname_n].write(rest + "\n")
-	g_logfiles[hostname_n].flush()
+	g_loggers[hostname_n].info(rest)
 
 
 def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
@@ -98,7 +112,7 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 					if soc_pub:
 						soc_pub.send(msg)
 					if uselog:
-						writelog(msg)
+						write_to_log(msg)
 
 		# read from addr_subscribe and forward to addr_forward
 
@@ -121,7 +135,7 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog):
 					if soc_pub:
 						soc_pub.send(msg)
 					if uselog:
-						writelog(msg)
+						write_to_log(msg)
 
 		time.sleep(0.01)
 

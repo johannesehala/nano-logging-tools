@@ -1,2 +1,3 @@
-*.txt
+log_*.log
+log_*.txt
 *.pyc
