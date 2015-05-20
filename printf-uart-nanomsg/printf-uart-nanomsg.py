@@ -74,7 +74,7 @@ class NewlineParser:
 			return t
 
 
-def run(server, port="/dev/ttyUSB0", baud=115200):
+def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
 	"""
 	Read data from serial port, split by newlines,
 	prepend hostname and timestr to every line and
@@ -95,84 +95,100 @@ def run(server, port="/dev/ttyUSB0", baud=115200):
 	soc.connect(server) # "tcp://localhost:14999"
 	soc_waiting_for_ack = False
 
-	# setup serial port and other variables
+	if portname is None:
+		portname = port[-1]
 
-	serial_timeout = 0.01 if sys.platform == "win32" else 0
-	serialport = serial.Serial(port, baud, timeout=serial_timeout)
-	serialport.flushInput()
-	port_num = port[-1]
-	parser = NewlineParser()
-	t_last_recv = time.time()
+	while True:
+		try:
+			# setup serial port and other variables
+			serialport = None
+			serial_timeout = 0.01 if sys.platform == "win32" else 0
 
-	outbuf_tx_index = 0
-	disconnected = False
-	outbuf = [] # (timestamp, "processed line")
+			while serialport is None:
+				try:
+					serialport = serial.Serial(port, baud, timeout=serial_timeout)
+					serialport.flushInput()
+				except serial.SerialException:
+					serialport = None
+					time.sleep(0.1)
 
-	seqno = 0
+			log.info("Opened %s." % (port))
 
-	while 1:
-		s = serialport.read(1000)
-		t = time.time()
-		if s:
-			t_last_recv = t
-			parser.put(s)
+			parser = NewlineParser()
+			t_last_recv = time.time()
 
-			for l in parser:
-				outbuf.append( (t, prepare_tx_line(port_num, seqno, l, t)) )
-				seqno += 1
+			outbuf_tx_index = 0
+			disconnected = False
+			outbuf = [] # (timestamp, "processed line")
 
-		# # this here is for testing the system if there's no serial port traffic
-		# if t - t_last_recv > 0.5:
-		# 	t_last_recv = t
-		# 	outbuf.append( (t, prepare_tx_line(port_num, seqno, "Hello world %s" % seqno, t)) )
-		# 	seqno += 1
+			seqno = 0
 
-		# if no newline character arrives after 0.2s of last recv and parser.buf
-		# contains data, send out the partial line.
-		if t - t_last_recv > 0.2 and parser.buf:
-			outbuf.append( (t, prepare_tx_line(port_num, seqno, parser.buf, t, broken=True)) )
-			seqno += 1
-			parser.buf = ""
+			while 1:
+				s = serialport.read(1000)
+				t = time.time()
+				if s:
+					t_last_recv = t
+					parser.put(s)
 
-		# clean up the outbuf. remove entries older than 30 minutes.
+					for l in parser:
+						outbuf.append( (t, prepare_tx_line(portname, seqno, l, t)) )
+						seqno += 1
 
-		while outbuf:
-			if outbuf[0][0] < t - MAX_MSG_AGE:
-				outbuf.pop(0)
-			else:
-				break
+				# # this here is for testing the system if there's no serial port traffic
+				# if t - t_last_recv > 0.5:
+				# 	t_last_recv = t
+				# 	outbuf.append( (t, prepare_tx_line(portname, seqno, "Hello world %s" % seqno, t)) )
+				# 	seqno += 1
 
-		# send the next message to nanomsg only if the prev got some kind of answer
+				# if no newline character arrives after 0.2s of last recv and parser.buf
+				# contains data, send out the partial line.
+				if t - t_last_recv > 0.2 and parser.buf:
+					outbuf.append( (t, prepare_tx_line(portname, seqno, parser.buf, t, broken=True)) )
+					seqno += 1
+					parser.buf = ""
 
-		if soc_waiting_for_ack:
-			try:
-				if soc.recv(flags=DONTWAIT):
-					soc_waiting_for_ack = False
-					disconnected = False
-					# remove packets for which we just got the ack.
-					outbuf = outbuf[outbuf_tx_index:]
-			except NanoMsgAPIError as e:
-				if e.errno == errno.EAGAIN:
-					disconnected = True
-				else:
-					# unknown error!
-					raise
+				# clean up the outbuf. remove entries older than 30 minutes.
 
-		if not soc_waiting_for_ack and outbuf:
-			txmsg = "\n".join([e[1] for e in outbuf]) # join all messages to one big.
-			outbuf_tx_index = len(outbuf)
+				while outbuf:
+					if outbuf[0][0] < t - MAX_MSG_AGE:
+						outbuf.pop(0)
+					else:
+						break
 
-			soc.send(txmsg)
-			soc_waiting_for_ack = True
+				# send the next message to nanomsg only if the prev got some kind of answer
 
-		time.sleep(.01)
+				if soc_waiting_for_ack:
+					try:
+						if soc.recv(flags=DONTWAIT):
+							soc_waiting_for_ack = False
+							disconnected = False
+							# remove packets for which we just got the ack.
+							outbuf = outbuf[outbuf_tx_index:]
+					except NanoMsgAPIError as e:
+						if e.errno == errno.EAGAIN:
+							disconnected = True
+						else:
+							# unknown error!
+							raise
+
+				if not soc_waiting_for_ack and outbuf:
+					txmsg = "\n".join([e[1] for e in outbuf]) # join all messages to one big.
+					outbuf_tx_index = len(outbuf)
+
+					soc.send(txmsg)
+					soc_waiting_for_ack = True
+
+				time.sleep(.01)
+		except serial.SerialException as e:
+			log.warning("Serial port disconnected: %s. Will try to open again." % (e.message))
 
 
 if __name__ == "__main__":
 	from argparse import ArgumentParser
 	ap = ArgumentParser(description="Printf UART logger that logs to nanomsg")
-	ap.add_argument("port")
-	ap.add_argument("baud", default=115200)
-	ap.add_argument("--server", default="tcp://test2.arupuru.com:14999")
+	ap.add_argument("server", help="nanomsg printf server, for example tcp://test2.arupuru.com:14999")
+	ap.add_argument("port", help="Serial port")
+	ap.add_argument("baud", default=115200, help="Serial port baudrate")
+	ap.add_argument("--portname", default=None)
 	args = ap.parse_args()
 	run(**args.__dict__)
