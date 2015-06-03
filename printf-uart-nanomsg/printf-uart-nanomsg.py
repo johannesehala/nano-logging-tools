@@ -108,7 +108,7 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
 				try:
 					serialport = serial.Serial(port, baud, timeout=serial_timeout)
 					serialport.flushInput()
-				except serial.SerialException:
+				except (serial.SerialException, OSError):
 					serialport = None
 					time.sleep(0.1)
 
