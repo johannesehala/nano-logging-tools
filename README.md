@@ -29,4 +29,7 @@ make
 
 
 # Installing Python nanomsg library
+* Install python-dev  
+```sudo apt-get install python-dev```
+* Install nanomsg for python  (after libnanomsg has been installed)  
 ```sudo pip install nanomsg```
