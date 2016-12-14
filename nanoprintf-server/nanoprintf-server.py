@@ -42,7 +42,7 @@ def create_logger(filename):
     logfile.setFormatter(logformat)
     newlogger = logging.getLogger(filename)
     newlogger.addHandler(logfile)
-    newlogger.setLevel(logging.NOTSET)
+    newlogger.setLevel(logging.DEBUG)
     return newlogger
 
 
@@ -74,8 +74,8 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
     log.info("logging messages to files        : %s", uselog)
     log.info("logging messages to stdout       : %s", debug)
 
-    if debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+    if not debug:
+        logging.getLogger().handlers[0].setLevel(logging.INFO)
 
     soc_rep = None
     soc_pub = None
@@ -194,6 +194,7 @@ if __name__ == "__main__":
         "--debug",
         dest="debug",
         action="store_true",
+        default=False,
         help="write incoming messages to stdout"
     )
     args = ap.parse_args()
