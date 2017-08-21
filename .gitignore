@@ -3,3 +3,4 @@ log_*.txt
 *.pyc
 .idea
 *.egg-info
+dist
