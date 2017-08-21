@@ -1,3 +1,3 @@
 #!/usr/bin/env python
-from nanologgingtools.nanoprintf-logger import main
+from nanologgingtools.nanoprintf_logger import main
 main()

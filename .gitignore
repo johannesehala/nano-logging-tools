@@ -2,3 +2,4 @@ log_*.log
 log_*.txt
 *.pyc
 .idea
+*.egg-info
