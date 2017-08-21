@@ -12,6 +12,7 @@ Logs all loglines to local logfiles. Separate file for every hostname/port.
 import sys
 import time
 import errno
+import datetime
 
 from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
 from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
@@ -110,7 +111,6 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
             jumbomsg = None
             try:
                 jumbomsg = soc_rep.recv(flags=DONTWAIT)
-                print("jumbomsg", len(jumbomsg))
             except NanoMsgAPIError as e:
                 if e.errno != errno.EAGAIN:
                     raise
@@ -120,15 +120,17 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
                 soc_rep.send("got it")
                 # ONLY messages from the REQ socket can be jumbomessages (simple lines joined by newlines)
                 msgs = jumbomsg.split("\n")
+                hostname_n = "?"
                 for msg in msgs:
                     hostname_n, rest = msg.split(None, 1)
-                    s = "a" if hostname_n[-1] == "1" else "d"
-                    sys.stdout.write(s)
-                    sys.stdout.flush()
                     if soc_pub:
                         soc_pub.send(msg)
                     if uselog:
                         write_to_log(msg)
+
+                t = datetime.datetime.utcfromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
+                sys.stdout.write("{} {}: {}\n".format(t, hostname_n, len(msgs)))
+                sys.stdout.flush()
 
         # read from addr_subscribe and forward to addr_forward
 
