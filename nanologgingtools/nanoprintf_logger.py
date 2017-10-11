@@ -29,15 +29,16 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.NOTSET, format="%(asctime)s %(name)s %(levelname)-5s: %(message)s")
 
 # drop messages that are in buf but older than this.
-MAX_MSG_AGE = 60. * 30
+MAX_MSG_AGE = 30 * 60.0
+MAX_ACK_TIMEOUT = 60.0
 
 
 def log_timestr(t=None):
-    """ '2010-01-18T18:40:42.23Z' utc time """
+    """ '2010-01-18T18:40:42.232Z' utc time """
     if t is None:
         t = time.time()
     # return datetime.datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S.%f")[:22]
-    return datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
+    return datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def prepare_tx_line(portname, seqno, line, timestamp, broken=False):
@@ -74,16 +75,7 @@ class NewlineParser:
             return t
 
 
-def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
-    """
-    Read data from serial port, split by newlines,
-    prepend hostname and timestr to every line and
-    send to a nanomsg REP socket.
-    """
-    log.info("using port %s @ %s, sending to server %s", port, baud, server)
-
-    # setup nanomsg
-
+def connect(server):
     soc = Socket(REQ)
     # start reconnecting after one second pause
     # max reconnect timer to one minute
@@ -93,7 +85,20 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
     soc.set_int_option(SOL_SOCKET, RECONNECT_IVL_MAX, 1000 * 60)
     soc.set_int_option(SOL_SOCKET, REQ_RESEND_IVL, 1000 * 10)
     soc.connect(server)  # "tcp://localhost:14999"
-    soc_waiting_for_ack = False
+    return soc
+
+
+def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
+    """
+    Read data from serial port, split by newlines,
+    prepend hostname and timestr to every line and
+    send to a nanomsg REP socket.
+    """
+    log.info("using port %s @ %s, sending to server %s", port, baud, server)
+
+    # setup nanomsg
+    soc = connect(server)
+    soc_waiting_for_ack = None
 
     if portname is None:
         portname = port[-1]
@@ -122,7 +127,7 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
 
             seqno = 0
 
-            while 1:
+            while True:
                 s = serialport.read(1000)
                 t = time.time()
                 if s:
@@ -130,7 +135,7 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
                     parser.put(s)
 
                     for l in parser:
-                        outbuf.append( (t, prepare_tx_line(portname, seqno, l, t)) )
+                        outbuf.append((t, prepare_tx_line(portname, seqno, l, t)))
                         seqno += 1
 
                 # # this here is for testing the system if there's no serial port traffic
@@ -142,7 +147,7 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
                 # if no newline character arrives after 0.2s of last recv and parser.buf
                 # contains data, send out the partial line.
                 if t - t_last_recv > 0.2 and parser.buf:
-                    outbuf.append( (t, prepare_tx_line(portname, seqno, parser.buf, t, broken=True)) )
+                    outbuf.append((t, prepare_tx_line(portname, seqno, parser.buf, t, broken=True)))
                     seqno += 1
                     parser.buf = ""
 
@@ -156,25 +161,32 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
 
                 # send the next message to nanomsg only if the prev got some kind of answer
 
-                if soc_waiting_for_ack:
-                    try:
-                        if soc.recv(flags=DONTWAIT):
-                            soc_waiting_for_ack = False
-                            # remove packets for which we just got the ack.
-                            outbuf = outbuf[outbuf_tx_index:]
-                    except NanoMsgAPIError as e:
-                        if e.errno == errno.EAGAIN:
-                            pass
-                        else:
-                            # unknown error!
-                            raise
+                if soc_waiting_for_ack is not None:
+                    if time.time() - soc_waiting_for_ack > MAX_ACK_TIMEOUT:
+                        log.warning("No ack for %d ... reconnecting. (queue %d)", MAX_ACK_TIMEOUT, len(outbuf))
+                        soc_waiting_for_ack = None
 
-                if not soc_waiting_for_ack and outbuf:
-                    txmsg = "\n".join([e[1] for e in outbuf]) # join all messages to one big.
+                        soc.close()
+                        soc = connect(server)
+                    else:
+                        try:
+                            if soc.recv(flags=DONTWAIT):
+                                soc_waiting_for_ack = None
+                                # remove packets for which we just got the ack.
+                                outbuf = outbuf[outbuf_tx_index:]
+                        except NanoMsgAPIError as e:
+                            if e.errno == errno.EAGAIN:
+                                pass
+                            else:
+                                # unknown error!
+                                raise
+
+                if soc_waiting_for_ack is None and outbuf:
+                    txmsg = "\n".join([e[1] for e in outbuf])  # join all messages to one big.
                     outbuf_tx_index = len(outbuf)
 
                     soc.send(txmsg)
-                    soc_waiting_for_ack = True
+                    soc_waiting_for_ack = time.time()
 
                 time.sleep(.01)
         except serial.SerialException as e:
