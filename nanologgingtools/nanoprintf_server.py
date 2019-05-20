@@ -1,5 +1,4 @@
 #!/usr/bin/env python2
-
 """
 Two possibilities to get loglines:
     * Receive loglines from printf-uart-nanomsg.py by serving a nanomsg REP socket.
@@ -10,20 +9,26 @@ Forwards all loglines to a nanomsg PUB socket.
 Logs all loglines to local logfiles. Separate file for every hostname/port.
 """
 
+import sys
+import time
+import errno
+import datetime
+
+from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
+from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
+
 import logging
+import logging.handlers
+from .watchedlogger import WatchedTimedRotatingFileHandler
+
+__author__ = "Elmo Trolla, Mattis Marjak, Andres Vahter, Raido Pahtma"
+__license__ = "MIT"
+
 log = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)-5s: %(message)s"
 )
-import logging.handlers
-
-import sys
-import time
-import errno
-
-from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
-from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
 
 # dict of opened loggers. one for every device/logfile
 g_loggers = {}
@@ -33,7 +38,7 @@ def create_logger(filename):
     """ create/return a logger that logs to a file with the given name. rotate the file every midnight, keep 14 days
     l = create_logger("hello.log"); l.info("line1"); # creates a file "hello.log" with only "line1\n" for content. """
     logformat = logging.Formatter("%(message)s")
-    logfile = logging.handlers.TimedRotatingFileHandler(
+    logfile = WatchedTimedRotatingFileHandler(
         filename,
         when="midnight",
         utc=True,
@@ -106,7 +111,6 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
             jumbomsg = None
             try:
                 jumbomsg = soc_rep.recv(flags=DONTWAIT)
-                print "jumbomsg", len(jumbomsg)
             except NanoMsgAPIError as e:
                 if e.errno != errno.EAGAIN:
                     raise
@@ -116,22 +120,22 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
                 soc_rep.send("got it")
                 # ONLY messages from the REQ socket can be jumbomessages (simple lines joined by newlines)
                 msgs = jumbomsg.split("\n")
+                hostname_n = "?"
                 for msg in msgs:
                     hostname_n, rest = msg.split(None, 1)
-                    s = "a" if hostname_n[-1] == "1" else "d"
-                    sys.stdout.write(s)
-                    sys.stdout.flush()
                     if soc_pub:
                         soc_pub.send(msg)
                     if uselog:
                         write_to_log(msg)
 
+                t = datetime.datetime.utcfromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
+                sys.stdout.write("{} {}: {}\n".format(t, hostname_n, len(msgs)))
+                sys.stdout.flush()
+
         # read from addr_subscribe and forward to addr_forward
 
         if soc_sub:
             while 1:
-
-                msg = None
                 try:
                     msg = soc_sub.recv(flags=DONTWAIT)
                 except NanoMsgAPIError as e:
@@ -152,7 +156,7 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
         time.sleep(0.01)
 
 
-if __name__ == "__main__":
+def main():
     from argparse import ArgumentParser
     ap = ArgumentParser(
         description="printf-uart-nanomsg receiver.\n ...."
@@ -181,11 +185,17 @@ if __name__ == "__main__":
         default=None,
         help=(
             "pull messages from another nanoprintf-server. "
-            "default is off, but format is as usual: tcp://host:14998"
+            "disabled by default, enable with: tcp://host:14998"
         )
     )
     ap.add_argument(
         "--log",
+        dest="uselog",
+        action="store_true",
+        help="write incoming messages to log files"
+    )
+    ap.add_argument(
+        "--rotate",
         dest="uselog",
         action="store_true",
         help="write incoming messages to log files"
@@ -199,3 +209,7 @@ if __name__ == "__main__":
     )
     args = ap.parse_args()
     run(**args.__dict__)
+
+
+if __name__ == "__main__":
+    main()
