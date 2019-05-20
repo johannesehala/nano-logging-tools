@@ -95,7 +95,7 @@ def connect(server):
     return soc
 
 
-def run(server, port="/dev/ttyUSB0", baud=115200, portname=None, mts=True):
+def run(server, port="/dev/ttyUSB0", baud=115200, portname=None, mts=True, debug=False):
     """
     Read data from serial port, split by newlines,
     prepend hostname and timestr to every line and
@@ -163,11 +163,14 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None, mts=True):
                             except (ValueError, TypeError):
                                 log.exception("ts parse")
 
-                            if abs(t - ts) > 1:  # 1 second is a lot, must have missed BOOT message
+                            offs = t - ts
+                            if abs(offs) > 1:  # 1 second is a lot, must have missed BOOT message
                                 broken = True
 
-                            if bts is not None:
-                                log.debug("%s (%s>%s): %s", log_timestr(t), log_timestr(bts), log_timestr(ts), l)
+                            if debug:  # Don't want unnecessary timestamp formatting to take place
+                                if bts is not None:
+                                    log.debug("%s/%s (%s, %.3f): %s", log_timestr(t), log_timestr(ts),
+                                              log_timestr(bts), offs, l)
 
                         outbuf.append((ts, prepare_tx_line(portname, seqno, l, ts, broken=broken)))
                         seqno += 1
@@ -244,7 +247,7 @@ def main():
         loglevel = logging.INFO
 
     logging.basicConfig(level=loglevel, format="%(asctime)s %(name)s %(levelname)-5s: %(message)s")
-    run(args.server, args.port, args.baud, args.portname, not args.no_mts)
+    run(args.server, args.port, args.baud, args.portname, not args.no_mts, args.debug)
 
 
 if __name__ == "__main__":
