@@ -6,9 +6,16 @@ line format:
     "host1_1  2015-01-14T13:41:37.90 Hello world"
     "host1_4 x2015-01-14T13:41:37.90 Hello world"
 The 'x' denotes a broken line (newline not received in time).
+
+If lines correspond to the format "([0-9a-f]*) [DIWE]\|.*", the process assumes that
+the first element is a millisecond timestamp and looks for a BOOT marker in the format
+"([0-9a-f]*) B\|BOOT". It then corrects timestamps using the boot time and millisecond
+timestamp. Lines are marked broken when they correspond to the timestamp format and
+boot time is not known. This behaviour can be disabled with the no-mts option.
 """
 
 import os
+import re
 import sys
 import time
 import datetime
@@ -26,7 +33,7 @@ __license__ = "MIT"
 
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.NOTSET, format="%(asctime)s %(name)s %(levelname)-5s: %(message)s")
+
 
 # drop messages that are in buf but older than this.
 MAX_MSG_AGE = 30 * 60.0
@@ -88,7 +95,7 @@ def connect(server):
     return soc
 
 
-def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
+def run(server, port="/dev/ttyUSB0", baud=115200, portname=None, mts=True, debug=False):
     """
     Read data from serial port, split by newlines,
     prepend hostname and timestr to every line and
@@ -126,6 +133,7 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
             outbuf = []  # (timestamp, "processed line")
 
             seqno = 0
+            bts = None  # BootTimeStamp
 
             while True:
                 s = serialport.read(1000)
@@ -135,7 +143,36 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
                     parser.put(s)
 
                     for l in parser:
-                        outbuf.append((t, prepare_tx_line(portname, seqno, l, t)))
+                        ts = t
+                        broken = False
+
+                        if mts:
+                            try:
+                                m = re.search("([0-9a-f]*) B\|BOOT", l)
+                                if m is not None:
+                                    offs = int(m.group(1), 16) / 1000.0
+                                    bts = t - offs
+                                    log.info("BOOT %s %s %s", log_timestr(t), offs, log_timestr(bts))
+                                else:
+                                    m = re.search("([0-9a-f]*) [DIWE]\|.*", l)
+                                    if m is not None:
+                                        if bts is not None:
+                                            ts = bts + int(m.group(1), 16)/1000.0
+                                        else:
+                                            broken = True
+                            except (ValueError, TypeError):
+                                log.exception("ts parse")
+
+                            offs = t - ts
+                            if abs(offs) > 1:  # 1 second is a lot, must have missed BOOT message
+                                broken = True
+
+                            if debug:  # Don't want unnecessary timestamp formatting to take place
+                                if bts is not None:
+                                    log.debug("%s/%s (%s, %.3f): %s", log_timestr(t), log_timestr(ts),
+                                              log_timestr(bts), offs, l)
+
+                        outbuf.append((ts, prepare_tx_line(portname, seqno, l, ts, broken=broken)))
                         seqno += 1
 
                 # # this here is for testing the system if there's no serial port traffic
@@ -196,12 +233,21 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None):
 def main():
     from argparse import ArgumentParser
     ap = ArgumentParser(description="Printf UART logger that logs to nanomsg")
-    ap.add_argument("server", help="nanomsg printf server, for example tcp://test2.arupuru.com:14999")
+    ap.add_argument("server", help="nanomsg printf server, for example tcp://logserver.local:14999")
     ap.add_argument("port", help="Serial port")
     ap.add_argument("baud", default=115200, help="Serial port baudrate")
     ap.add_argument("--portname", default=None)
+    ap.add_argument("--no-mts", default=False, action="store_true")
+    ap.add_argument("--debug", default=False, action="store_true")
     args = ap.parse_args()
-    run(**args.__dict__)
+
+    if args.debug:
+        loglevel = logging.NOTSET
+    else:
+        loglevel = logging.INFO
+
+    logging.basicConfig(level=loglevel, format="%(asctime)s %(name)s %(levelname)-5s: %(message)s")
+    run(args.server, args.port, args.baud, args.portname, not args.no_mts, args.debug)
 
 
 if __name__ == "__main__":
