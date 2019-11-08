@@ -118,7 +118,18 @@ def run(server, port="/dev/ttyUSB0", baud=115200, portname=None, mts=True, debug
 
             while serialport is None:
                 try:
-                    serialport = serial.Serial(port, baud, timeout=serial_timeout)
+                    serialport = serial.serial_for_url(port,
+                                               baudrate=baud,
+                                               bytesize=serial.EIGHTBITS,
+                                               parity=serial.PARITY_NONE,
+                                               stopbits=serial.STOPBITS_ONE,
+                                               timeout=serial_timeout,
+                                               xonxoff=False,
+                                               rtscts=False, dsrdtr=False,
+                                               exclusive=True,
+                                               do_not_open=True)
+                    serialport.dtr = 0  # Set initial state to 0
+                    serialport.open()
                     serialport.flushInput()
                 except (serial.SerialException, OSError):
                     serialport = None
