@@ -111,6 +111,7 @@ def run(addr_listenprintf, addr_forward, addr_subscribe, uselog, debug):
             jumbomsg = None
             try:
                 jumbomsg = soc_rep.recv(flags=DONTWAIT)
+                jumbomsg = jumbomsg.decode('utf-8')
             except NanoMsgAPIError as e:
                 if e.errno != errno.EAGAIN:
                     raise
