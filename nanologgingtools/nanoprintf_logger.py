@@ -68,7 +68,7 @@ class NewlineParser:
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         t = self._get_next_line()
         return t
 

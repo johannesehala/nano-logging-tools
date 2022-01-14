@@ -15,7 +15,7 @@ import calendar
 
 from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
 from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
-from nuggets import nuggets
+from .nuggets import nuggets
 
 def timestr_to_timestamp(timestr):
     """timestr format: '2014-02-11T18:46:22.13Z'"""
@@ -48,7 +48,7 @@ def transform_for_sensed(msg):
             p = nugget.split()
             for nugget in nuggets:
                 if p[0] == nugget['prefix']:
-                    fields = dict(zip(nugget['fields'], p))
+                    fields = dict(list(zip(nugget['fields'], p)))
                     params = [timestamp, int(fields['node'],16), fields['name']]+nugget['prep'](fields)
                     return nugget['frmt'] % params
             log.error("unknown sensed packet: %s", msg)
@@ -91,7 +91,7 @@ def run(addr_forward, addr_subscribe):
 
             if msg:
                 #hostname_n, rest = msg.split(None, 1)
-                print msg
+                print(msg)
 
                 msg2 = transform_for_sensed(msg)
                 if msg2:

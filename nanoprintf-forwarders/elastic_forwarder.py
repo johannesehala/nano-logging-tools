@@ -9,7 +9,7 @@ from elasticsearch import Elasticsearch
 from nanomsg import Socket, PUB, SUB, REP, SUB_SUBSCRIBE
 from nanomsg import SOL_SOCKET, RECONNECT_IVL, RECONNECT_IVL_MAX, DONTWAIT, NanoMsgAPIError
 
-from sensed_translator.nuggets import nuggets
+from .sensed_translator.nuggets import nuggets
 
 # from interrupt_handler import bind_signals
 # bind_signals()
@@ -83,7 +83,7 @@ class PrintfElasticForwarder(object):
                 for nugget in nuggets:
                     if p[0] == nugget['prefix']:
                         prefix = nugget['prefix']
-                        fields = dict(zip(nugget['fields'], p))
+                        fields = dict(list(zip(nugget['fields'], p)))
                         fields['host'] = hostname_n
                         fields['timestamp']   = tm
                         break
